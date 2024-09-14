@@ -1,6 +1,6 @@
 # ASP.NET Core Minimal APIs를 활용하여 TODO API 만들기: 단계별 가이드
 
-이 가이드에서는 ASP.NET Core의 Minimal APIs를 사용하여 간단한 TODO API를 만드는 과정을 살펴봅니다. Minimal APIs는 간단하고 가벼운 방식으로 API를 구축할 수 있도록 해주며, 특히 작은 규모의 프로젝트나 프로토타이핑에 유용합니다. 이 글에서는 기본적인 CRUD 기능을 제공하는 TODO API를 만드는 것부터 시작해, 데이터 저장을 위한 in-memory 데이터베이스 설정과 API 호출을 테스트하는 방법까지 단계별로 다루겠습니다.
+이 가이드에서는 ASP.NET Core의 Minimal APIs를 사용하여 간단한 TODO API를 만드는 과정을 살펴봅니다. Minimal APIs는 간단하고 가벼운 방식으로 API를 구축할 수 있도록 해주며, 특히 작은 규모의 프로젝트나 프로토타이핑에 유용합니다. 이 글에서는 기본적인 CRUD 기능을 제공하는 TODO API를 만드는 것부터 시작해, 데이터 저장을 위한 in-memory 데이터베이스 설정과 API 호출을 테스트하는 방법까지 단계별로 다루겠습니다. 또한, `MapPut` 메서드를 추가하여 TODO 항목을 업데이트하는 기능도 포함해보겠습니다.
 
 ## 목차
 1. [프로젝트 설정 및 시작하기](#1-프로젝트-설정-및-시작하기)
@@ -107,6 +107,21 @@ app.MapPost("/todos", (TodoRecord task) =>
     return TypedResults.Created($"/todos/{task.Id}", task);
 });
 
+// 특정 ID의 TODO 항목 업데이트
+app.MapPut("/todos/{id}", (int id, TodoRecord updatedTodo) =>
+{
+    var todo = todos.SingleOrDefault(t => t.Id == id);
+    if (todo is null)
+    {
+        return TypedResults.NotFound();
+    }
+
+    todo.Title = updatedTodo.Title;
+    todo.IsCompleted = updatedTodo.IsCompleted;
+
+    return TypedResults.Ok(todo);
+});
+
 // 특정 ID의 TODO 항목 삭제
 app.MapDelete("/todos/{id}", (int id) =>
 {
@@ -122,7 +137,8 @@ app.MapDelete("/todos/{id}", (int id) =>
 1. **`MapGet("/todos")`**: 전체 TODO 목록을 가져오는 GET 요청을 처리합니다.
 2. **`MapGet("/todos/{id}")`**: 특정 ID의 TODO 항목을 가져옵니다. 해당 ID가 없으면 404 응답을 반환합니다.
 3. **`MapPost("/todos")`**: 새로운 TODO 항목을 추가하는 POST 요청을 처리합니다. 새 항목이 추가되면 201(Created) 응답을 반환합니다.
-4. **`MapDelete("/todos/{id}")`**: 특정 ID의 TODO 항목을 삭제하는 DELETE 요청을 처리합니다.
+4. **`MapPut("/todos/{id}")`**: 특정 ID의 TODO 항목을 업데이트하는 PUT 요청을 처리합니다. 요청된 ID가 존재하지 않으면 404(Not Found) 응답을 반환하고, 존재할 경우 해당 TODO 항목의 데이터를 업데이트합니다.
+5. **`MapDelete("/todos/{id}")`**: 특정 ID의 TODO 항목을 삭제하는 DELETE 요청을 처리합니다.
 
 ## 4. HTTP 파일을 사용하여 API 테스트하기
 
@@ -153,6 +169,17 @@ GET https://localhost:5001/todos/1
 
 ###
 
+# 특정 ID의 TODO 항목 업데이트
+PUT https://localhost:5001/todos/1
+Content-Type: application/json
+
+{
+  "title": "Updated Todo",
+  "isCompleted": true
+}
+
+###
+
 # 특정 ID의 TODO 항목 삭제
 DELETE https://localhost:5001/todos/1
 ```
@@ -161,6 +188,7 @@ DELETE https://localhost:5001/todos/1
 
 - **GET**: `GET https://localhost:5001/todos` 요청으로 전체 TODO 목록을 가져옵니다.
 - **POST**: 새로운 TODO 항목을 추가하는 요청입니다. JSON 형식의 데이터를 전송합니다.
+- **PUT**: 특정 ID의 TODO 항목을 업데이트하는 요청입니다. 기존 항목의 제목과 완료 여부를 변경할 수 있습니다.
 - **DELETE**: 특정 ID의 TODO 항목을 삭제하는 요청입니다.
 
 이러한 파일을 통해 API의 각 기능을 쉽게 테스트할 수 있습니다.
