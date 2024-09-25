@@ -487,3 +487,152 @@ Update-Database
 
 이로써 **Branches** 테이블에 대한 CRUD 기능을 구현할 수 있으며, **Bootstrap 5 모달**을 사용하여 사용자가 친숙한 UI에서 지점을 관리할 수 있습니다.
 
+## 7. 동적으로 데이터베이스에 Branches 테이블 생성하기 
+
+### 1. **Branches 테이블 생성 클래스를 작성하기**
+
+`Branches` 테이블이 없는 각 테넌트 데이터베이스에 대해 해당 테이블을 생성하는 클래스를 아래와 같이 작성할 수 있습니다. 기존 코드를 참조하여 새롭게 생성하는 `TenantSchemaEnhancerCreateBranchesTable` 클래스는 `Branches` 테이블을 각 테넌트 데이터베이스에 추가합니다.
+
+#### `TenantSchemaEnhancerCreateBranchesTable.cs`
+
+```csharp
+using Microsoft.Data.SqlClient;
+using System.Collections.Generic;
+
+namespace KodeeOne.Infrastructures.Tenants
+{
+    public class TenantSchemaEnhancerCreateBranchesTable
+    {
+        private string _masterConnectionString;
+
+        // 생성자: masterConnectionString을 설정합니다.
+        public TenantSchemaEnhancerCreateBranchesTable(string masterConnectionString)
+        {
+            _masterConnectionString = masterConnectionString;
+        }
+
+        // 모든 테넌트 데이터베이스를 향상시키는 메서드
+        public void EnhanceAllTenantDatabases()
+        {
+            List<(string ConnectionString, bool IsMultiPortalEnabled)> tenantDetails = GetTenantDetails();
+
+            foreach (var tenant in tenantDetails)
+            {
+                // Branches 테이블이 없으면 생성합니다.
+                CreateBranchesTableIfNotExists(tenant.ConnectionString);
+
+                // 추가적인 처리를 원하는 경우 여기에 로직 추가 (예: 기본 데이터 추가)
+            }
+        }
+
+        // 모든 테넌트의 연결 문자열과 IsMultiPortalEnabled 값을 가져오는 메서드
+        private List<(string ConnectionString, bool IsMultiPortalEnabled)> GetTenantDetails()
+        {
+            List<(string ConnectionString, bool IsMultiPortalEnabled)> result = new List<(string, bool)>();
+
+            using (SqlConnection connection = new SqlConnection(_masterConnectionString))
+            {
+                connection.Open();
+
+                SqlCommand cmd = new SqlCommand("SELECT ConnectionString, IsMultiPortalEnabled FROM dbo.Tenants", connection);
+                using (SqlDataReader reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string connectionString = reader["ConnectionString"].ToString();
+                        bool isMultiPortalEnabled = reader["IsMultiPortalEnabled"] != DBNull.Value && (bool)reader["IsMultiPortalEnabled"];
+                        result.Add((connectionString, isMultiPortalEnabled));
+                    }
+                }
+
+                connection.Close();
+            }
+
+            return result;
+        }
+
+        // 특정 테넌트 데이터베이스에 Branches 테이블이 없으면 생성하는 메서드
+        private void CreateBranchesTableIfNotExists(string connectionString)
+        {
+            // 문자열의 두 개의 백슬래시를 하나의 백슬래시로 변경
+            connectionString = connectionString.Replace("\\\\", "\\");
+
+            using (SqlConnection connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                SqlCommand cmdCheck = new SqlCommand(@"
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.TABLES 
+                    WHERE TABLE_SCHEMA = 'dbo' 
+                    AND TABLE_NAME = 'Branches'", connection);
+
+                int tableCount = (int)cmdCheck.ExecuteScalar();
+
+                if (tableCount == 0)
+                {
+                    SqlCommand cmdCreateTable = new SqlCommand(@"
+                        CREATE TABLE [dbo].[Branches](
+                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY CLUSTERED,
+                            [BranchName] NVARCHAR(100) NOT NULL,
+                            [Location] NVARCHAR(255) NULL,
+                            [ContactNumber] NVARCHAR(20) NULL,
+                            [EstablishedDate] DATE NULL,
+                            [IsActive] BIT NOT NULL
+                        )", connection);
+
+                    cmdCreateTable.ExecuteNonQuery();
+                }
+
+                connection.Close();
+            }
+        }
+    }
+}
+```
+
+### 2. **Program.cs (또는 Startup.cs)에서 실행 코드**
+
+`Program.cs` 또는 `Startup.cs`에서 테넌트 데이터베이스의 `Branches` 테이블 생성을 실행하는 코드를 작성합니다.
+
+#### `Program.cs`
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+builder.Services.AddControllersWithViews();
+
+// 데이터베이스 연결 문자열을 설정합니다.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+// TenantSchemaEnhancerCreateBranchesTable 클래스 인스턴스를 생성하고 모든 테넌트 데이터베이스에서 Branches 테이블을 생성합니다.
+var tenantSchemaEnhancerCreateBranchesTable = new TenantSchemaEnhancerCreateBranchesTable(connectionString);
+tenantSchemaEnhancerCreateBranchesTable.EnhanceAllTenantDatabases();
+
+var app = builder.Build();
+
+// Configure the HTTP request pipeline.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+}
+
+app.UseStaticFiles();
+app.UseRouting();
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+```
+
+이 코드 스니펫은 `Program.cs` 파일의 일부로, **애플리케이션 시작 시 모든 테넌트 데이터베이스에서 `Branches` 테이블이 있는지 확인하고** 없는 경우 자동으로 테이블을 생성합니다.
+
+### 3. **설명**
+- **`EnhanceAllTenantDatabases` 메서드**는 `GetTenantDetails` 메서드를 호출하여 모든 테넌트의 연결 문자열을 가져오고, 각 테넌트 데이터베이스에서 `Branches` 테이블이 존재하지 않으면 생성합니다.
+- `Program.cs`에서는 이 클래스를 인스턴스화하여 **애플리케이션이 시작될 때 모든 테넌트 데이터베이스에서 `Branches` 테이블을 생성**합니다.
+
+이 구조는 테넌트 기반 다중 데이터베이스 시스템에서 개별 데이터베이스에 필요한 스키마 변경을 자동화할 때 매우 유용합니다.
