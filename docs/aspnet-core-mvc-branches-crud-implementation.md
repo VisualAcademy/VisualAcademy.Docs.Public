@@ -511,37 +511,34 @@ namespace VisualAcademy.Infrastructures.Tenants
             _masterConnectionString = masterConnectionString;
         }
 
-        // 모든 테넌트 데이터베이스를 향상시키는 메서드
+        // 모든 테넌트 데이터베이스에 대해 테이블을 향상시키는 메서드
         public void EnhanceAllTenantDatabases()
         {
-            List<(string ConnectionString, bool IsMultiPortalEnabled)> tenantDetails = GetTenantDetails();
+            List<string> tenantConnectionStrings = GetTenantDetails();
 
-            foreach (var tenant in tenantDetails)
+            foreach (var connectionString in tenantConnectionStrings)
             {
                 // Branches 테이블이 없으면 생성합니다.
-                CreateBranchesTableIfNotExists(tenant.ConnectionString);
-
-                // 추가적인 처리를 원하는 경우 여기에 로직 추가 (예: 기본 데이터 추가)
+                CreateBranchesTableIfNotExists(connectionString);
             }
         }
 
-        // 모든 테넌트의 연결 문자열과 IsMultiPortalEnabled 값을 가져오는 메서드
-        private List<(string ConnectionString, bool IsMultiPortalEnabled)> GetTenantDetails()
+        // 모든 테넌트의 연결 문자열을 가져오는 메서드
+        private List<string> GetTenantDetails()
         {
-            List<(string ConnectionString, bool IsMultiPortalEnabled)> result = new List<(string, bool)>();
+            List<string> result = new List<string>();
 
             using (SqlConnection connection = new SqlConnection(_masterConnectionString))
             {
                 connection.Open();
 
-                SqlCommand cmd = new SqlCommand("SELECT ConnectionString, IsMultiPortalEnabled FROM dbo.Tenants", connection);
+                SqlCommand cmd = new SqlCommand("SELECT ConnectionString FROM dbo.Tenants", connection);
                 using (SqlDataReader reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
                     {
                         string connectionString = reader["ConnectionString"].ToString();
-                        bool isMultiPortalEnabled = reader["IsMultiPortalEnabled"] != DBNull.Value && (bool)reader["IsMultiPortalEnabled"];
-                        result.Add((connectionString, isMultiPortalEnabled));
+                        result.Add(connectionString);
                     }
                 }
 
