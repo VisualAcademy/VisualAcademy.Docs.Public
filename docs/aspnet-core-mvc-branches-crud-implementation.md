@@ -499,7 +499,7 @@ Update-Database
 using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
 
-namespace KodeeOne.Infrastructures.Tenants
+namespace VisualAcademy.Infrastructures.Tenants
 {
     public class TenantSchemaEnhancerCreateBranchesTable
     {
