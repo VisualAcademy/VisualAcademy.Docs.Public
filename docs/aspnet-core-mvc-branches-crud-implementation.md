@@ -1,10 +1,12 @@
 ### ASP.NET Core 8.0 MVC를 사용한 CRUD 구현: Branches 테이블 (VisualAcademy 프로젝트)
 
-이 가이드는 **Branches** 테이블에 대해 **ASP.NET Core 8.0 MVC**에서 **CRUD(Create, Read, Update, Delete)** 기능을 구현하는 방법을 자세히 안내합니다. 프로젝트는 **VisualAcademy**라는 이름으로 진행되며, **모델**, **리포지토리**, **서비스** 계층을 포함하고, **Web API**와 **jQuery**를 사용해 동적 CRUD를 구현합니다. **Create**와 **Edit**는 **Bootstrap 5** 모달을 사용하여 팝업 형태로 데이터를 입력하고 수정합니다.
+이 가이드는 **Branches** 테이블에 대해 **ASP.NET Core 8.0 MVC**에서 **CRUD(Create, Read, Update, Delete)** 기능을 구현하는 방법을 안내합니다. 프로젝트는 **VisualAcademy**라는 이름으로 진행되며, **모델**, **리포지토리**, **서비스** 계층을 포함하고, **Web API**와 **jQuery**를 사용해 동적 CRUD를 구현합니다. **Create**와 **Edit**는 **Bootstrap 5** 모달을 사용하여 팝업 형태로 데이터를 입력하고 수정합니다.
 
 ---
 
 ## 1. **SQL Server 테이블 생성**
+
+`VisualAcademy.SqlServer` 프로젝트가 있으면 열고, 없으면 생성한 후에 다음 테이블을 추가하세요.
 
 `Branches`라는 이름의 테이블을 SQL Server에서 생성합니다. 이 테이블에는 지점의 정보를 저장하기 위한 구조를 포함하며, 고유 식별자(Id), 지점 이름, 위치, 연락처, 설립일, 활성 상태를 관리합니다.
 
@@ -32,6 +34,8 @@ CREATE TABLE Branches (
 ---
 
 ## 2. **ASP.NET Core MVC 프로젝트 설정**
+
+`VisualAcademy` 프로젝트가 있으면 열고, 그렇지 않으면 새롭게 만드세요.
 
 ### Step 1: **프로젝트 생성**
 1. **Visual Studio**를 실행하고, `파일(File)` > `새로 만들기(New)` > `프로젝트(Project)`로 이동합니다.
@@ -88,6 +92,8 @@ app.MapControllerRoute(
 
 app.Run();
 ```
+
+이렇게 하면 Entity Framework Core를 사용하여 데이터베이스와 상호작용할 수 있도록 설정되고, `Branches` 컨트롤러가 기본적으로 라우팅됩니다.
 
 ---
 
@@ -260,7 +266,9 @@ public class BranchesController : Controller
     [HttpPut("{id}")]
     public async Task<IActionResult> Edit(int id, [FromBody] Branch branch)
     {
-        if (id != branch.Id || !ModelState.IsValid)
+        if (id
+
+ != branch.Id || !ModelState.IsValid)
         {
             return BadRequest();
         }
@@ -281,9 +289,7 @@ public class BranchesController : Controller
 
 ---
 
-## 5.
-
- **jQuery와 Bootstrap 5 모달을 사용한 CSHTML 페이지**
+## 5. **jQuery와 Bootstrap 5 모달을 사용한 CSHTML 페이지**
 
 ### Step 1: **Index.cshtml 설정**
 `Views/Branches/Index.cshtml` 파일을 생성하고 다음과 같이 **Create** 및 **Edit** 모달을 사용한 페이지를 작성합니다.
@@ -480,3 +486,4 @@ Update-Database
 ```
 
 이로써 **Branches** 테이블에 대한 CRUD 기능을 구현할 수 있으며, **Bootstrap 5 모달**을 사용하여 사용자가 친숙한 UI에서 지점을 관리할 수 있습니다.
+
