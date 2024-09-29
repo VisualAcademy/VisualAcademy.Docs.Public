@@ -67,7 +67,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 
 // Register DbContext
-builder.Services.AddDbContext<BranchesDbContext>(options =>
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Register repository and service for DI
@@ -114,13 +114,13 @@ public class Branch
 }
 ```
 
-### Step 2: **BranchesDbContext 설정**
-`Data` 폴더에 `BranchesDbContext.cs` 파일을 생성하고 다음 코드를 작성합니다.
+### Step 2: **ApplicationDbContext 설정**
+`Data` 폴더에 `ApplicationDbContext.cs` 파일을 생성하고 다음 코드를 작성합니다.
 
 ```csharp
-public class BranchesDbContext : DbContext
+public class ApplicationDbContext : DbContext
 {
-    public BranchesDbContext(DbContextOptions<BranchesDbContext> options) : base(options) { }
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
     public DbSet<Branch> Branches { get; set; }
 }
@@ -145,9 +145,9 @@ public interface IBranchRepository
 ```csharp
 public class BranchRepository : IBranchRepository
 {
-    private readonly BranchesDbContext _context;
+    private readonly ApplicationDbContext _context;
 
-    public BranchRepository(BranchesDbContext context)
+    public BranchRepository(ApplicationDbContext context)
     {
         _context = context;
     }
@@ -249,10 +249,39 @@ public class BranchesController : Controller
         var branches = await _service.GetAllBranches();
         return View(branches);
     }
+}
+```
 
-    // Create 액션: 새 지점 추가 (모달에서 호출)
+---
+
+## 5. **Web API 컨트롤러 생성**
+
+### Step 1: **BranchesServicesController**
+`Controllers` 폴더에 `BranchesServicesController.cs` 파일을 생성하고, Web API를 이용한 CRUD 작업을 위한 컨트롤러를 작성합니다.
+
+```csharp
+[Route("api/branches")]
+[ApiController]
+public class BranchesServicesController : ControllerBase
+{
+    private readonly BranchService _service;
+
+    public BranchesServicesController(BranchService service)
+    {
+        _service = service;
+    }
+
+    // Get all branches
+    [HttpGet]
+    public async Task<IActionResult> GetAllBranches()
+    {
+        var branches = await _service.GetAllBranches();
+        return Ok(branches);
+    }
+
+    // Create a new branch
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Branch branch)
+    public async Task<IActionResult> CreateBranch([FromBody] Branch branch)
     {
         if (ModelState.IsValid)
         {
@@ -262,24 +291,33 @@ public class BranchesController : Controller
         return BadRequest();
     }
 
-    // Edit 액션: 지점 수정 (모달에서 호출)
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Edit(int id, [FromBody] Branch branch)
+    // Get a branch by id
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetBranchById(int id)
     {
-        if (id
+        var branch = await _service.GetBranchById(id);
+        if (branch == null)
+        {
+            return NotFound();
+        }
+        return Ok(branch);
+    }
 
- != branch.Id || !ModelState.IsValid)
+    // Edit a branch
+    [HttpPut("{id}")]
+    public async Task<IActionResult> EditBranch(int id, [FromBody] Branch branch)
+    {
+        if (id != branch.Id || !ModelState.IsValid)
         {
             return BadRequest();
         }
-
         await _service.UpdateBranch(branch);
         return Ok();
     }
 
-    // Delete 액션: 지점 삭제
+    // Delete a branch
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> DeleteBranch(int id)
     {
         await _service.DeleteBranch(id);
         return Ok();
@@ -289,7 +327,7 @@ public class BranchesController : Controller
 
 ---
 
-## 5. **jQuery와 Bootstrap 5 모달을 사용한 CSHTML 페이지**
+## 6. **jQuery와 Bootstrap 5 모달을 사용한 CSHTML 페이지**
 
 ### Step 1: **Index.cshtml 설정**
 `Views/Branches/Index.cshtml` 파일을 생성하고 다음과 같이 **Create** 및 **Edit** 모달을 사용한 페이지를 작성합니다.
@@ -394,8 +432,20 @@ public class BranchesController : Controller
     $(document).ready(function() {
         // Load all branches
         function loadBranches() {
-            $.get('/Branches/Index', function(data) {
-                $('#branchesTable').html(data);
+            $.get('/api/branches', function(data) {
+                $('#branchesTable').empty();
+                $.each(data, function(i, branch) {
+                    $('#branchesTable').append(
+                        `<tr>
+                            <td>${branch.branchName}</td>
+                            <td>${branch.location}</td>
+                            <td>
+                                <button class="btn btn-sm btn-primary editBranch" data-id="${branch.id}">Edit</button>
+                                <button class="btn btn-sm btn-danger deleteBranch" data-id="${branch.id}">Delete</button>
+                            </td>
+                        </tr>`
+                    );
+                });
             });
         }
 
@@ -409,12 +459,15 @@ public class BranchesController : Controller
             };
 
             $.ajax({
-                url: '/Branches/Create',
+                url: '/api/branches',
                 type: 'POST',
                 contentType: 'application/json',
                 data: JSON.stringify(branch),
                 success: function() {
-                    $('#createBranchModal').modal('hide');
+                    $('#createBranchForm')[0].reset();      // 폼 재설정
+                    $('#createBranchModal').modal('hide');  // 모달 닫기
+                    $('body').removeClass('modal-open');    // 모달이 열렸을 때 body에 추가된 클래스 제거
+                    $('.modal-backdrop').remove();          // modal-backdrop 제거
                     loadBranches();
                 }
             });
@@ -424,7 +477,7 @@ public class BranchesController : Controller
         $(document).on('click', '.editBranch', function() {
             let id = $(this).data('id');
 
-            $.get(`/Branches/GetBranch/${id}`, function(data) {
+            $.get(`/api/branches/${id}`, function(data) {
                 $('#editBranchId').val(data.id);
                 $('#editBranchName').val(data.branchName);
                 $('#editLocation').val(data.location);
@@ -444,7 +497,7 @@ public class BranchesController : Controller
             };
 
             $.ajax({
-                url: `/Branches/Edit/${branch.Id}`,
+                url: `/api/branches/${branch.Id}`,
                 type: 'PUT',
                 contentType: 'application/json',
                 data: JSON.stringify(branch),
@@ -461,7 +514,7 @@ public class BranchesController : Controller
 
             if (confirm('Are you sure to delete this branch?')) {
                 $.ajax({
-                    url: `/Branches/Delete/${id}`,
+                    url: `/api/branches/${id}`,
                     type: 'DELETE',
                     success: function() {
                         loadBranches();
@@ -469,13 +522,16 @@ public class BranchesController : Controller
                 });
             }
         });
+
+        // 초기 로딩 시 모든 브랜치 데이터를 로드
+        loadBranches();
     });
 </script>
 ```
 
 ---
 
-## 6. **마무리**
+## 7. **마무리**
 
 1. **Web API**를 통해 데이터 CRUD 작업을 수행하고, **jQuery**와 **Bootstrap 5**를 사용하여 페이지에서 동적으로 **Create**, **Edit**, **Delete** 작업을 모달 창으로 구현합니다.
 2. **데이터베이스 마이그레이션**을 통해 데이터베이스를 설정하고 CRUD 기능을 테스트합니다.
@@ -486,150 +542,3 @@ Update-Database
 ```
 
 이로써 **Branches** 테이블에 대한 CRUD 기능을 구현할 수 있으며, **Bootstrap 5 모달**을 사용하여 사용자가 친숙한 UI에서 지점을 관리할 수 있습니다.
-
-## 7. 동적으로 데이터베이스에 Branches 테이블 생성하기 
-
-### 1. **Branches 테이블 생성 클래스를 작성하기**
-
-`Branches` 테이블이 없는 각 테넌트 데이터베이스에 대해 해당 테이블을 생성하는 클래스를 아래와 같이 작성할 수 있습니다. 기존 코드를 참조하여 새롭게 생성하는 `TenantSchemaEnhancerCreateBranchesTable` 클래스는 `Branches` 테이블을 각 테넌트 데이터베이스에 추가합니다.
-
-#### `TenantSchemaEnhancerCreateBranchesTable.cs`
-
-```csharp
-using Microsoft.Data.SqlClient;
-using System.Collections.Generic;
-
-namespace VisualAcademy.Infrastructures.Tenants
-{
-    public class TenantSchemaEnhancerCreateBranchesTable
-    {
-        private string _masterConnectionString;
-
-        // 생성자: masterConnectionString을 설정합니다.
-        public TenantSchemaEnhancerCreateBranchesTable(string masterConnectionString)
-        {
-            _masterConnectionString = masterConnectionString;
-        }
-
-        // 모든 테넌트 데이터베이스에 대해 테이블을 향상시키는 메서드
-        public void EnhanceAllTenantDatabases()
-        {
-            List<string> tenantConnectionStrings = GetTenantDetails();
-
-            foreach (var connectionString in tenantConnectionStrings)
-            {
-                // Branches 테이블이 없으면 생성합니다.
-                CreateBranchesTableIfNotExists(connectionString);
-            }
-        }
-
-        // 모든 테넌트의 연결 문자열을 가져오는 메서드
-        private List<string> GetTenantDetails()
-        {
-            List<string> result = new List<string>();
-
-            using (SqlConnection connection = new SqlConnection(_masterConnectionString))
-            {
-                connection.Open();
-
-                SqlCommand cmd = new SqlCommand("SELECT ConnectionString FROM dbo.Tenants", connection);
-                using (SqlDataReader reader = cmd.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        string connectionString = reader["ConnectionString"].ToString();
-                        result.Add(connectionString);
-                    }
-                }
-
-                connection.Close();
-            }
-
-            return result;
-        }
-
-        // 특정 테넌트 데이터베이스에 Branches 테이블이 없으면 생성하는 메서드
-        private void CreateBranchesTableIfNotExists(string connectionString)
-        {
-            // 문자열의 두 개의 백슬래시를 하나의 백슬래시로 변경
-            connectionString = connectionString.Replace("\\\\", "\\");
-
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                connection.Open();
-
-                SqlCommand cmdCheck = new SqlCommand(@"
-                    SELECT COUNT(*) 
-                    FROM INFORMATION_SCHEMA.TABLES 
-                    WHERE TABLE_SCHEMA = 'dbo' 
-                    AND TABLE_NAME = 'Branches'", connection);
-
-                int tableCount = (int)cmdCheck.ExecuteScalar();
-
-                if (tableCount == 0)
-                {
-                    SqlCommand cmdCreateTable = new SqlCommand(@"
-                        CREATE TABLE [dbo].[Branches](
-                            [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY CLUSTERED,
-                            [BranchName] NVARCHAR(100) NOT NULL,
-                            [Location] NVARCHAR(255) NULL,
-                            [ContactNumber] NVARCHAR(20) NULL,
-                            [EstablishedDate] DATE NULL,
-                            [IsActive] BIT NOT NULL
-                        )", connection);
-
-                    cmdCreateTable.ExecuteNonQuery();
-                }
-
-                connection.Close();
-            }
-        }
-    }
-}
-```
-
-### 2. **Program.cs (또는 Startup.cs)에서 실행 코드**
-
-`Program.cs` 또는 `Startup.cs`에서 테넌트 데이터베이스의 `Branches` 테이블 생성을 실행하는 코드를 작성합니다.
-
-#### `Program.cs`
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddControllersWithViews();
-
-// 데이터베이스 연결 문자열을 설정합니다.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-// TenantSchemaEnhancerCreateBranchesTable 클래스 인스턴스를 생성하고 모든 테넌트 데이터베이스에서 Branches 테이블을 생성합니다.
-var tenantSchemaEnhancerCreateBranchesTable = new TenantSchemaEnhancerCreateBranchesTable(connectionString);
-tenantSchemaEnhancerCreateBranchesTable.EnhanceAllTenantDatabases();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Home/Error");
-}
-
-app.UseStaticFiles();
-app.UseRouting();
-app.UseAuthorization();
-
-app.MapControllerRoute(
-    name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-
-app.Run();
-```
-
-이 코드 스니펫은 `Program.cs` 파일의 일부로, **애플리케이션 시작 시 모든 테넌트 데이터베이스에서 `Branches` 테이블이 있는지 확인하고** 없는 경우 자동으로 테이블을 생성합니다.
-
-### 3. **설명**
-- **`EnhanceAllTenantDatabases` 메서드**는 `GetTenantDetails` 메서드를 호출하여 모든 테넌트의 연결 문자열을 가져오고, 각 테넌트 데이터베이스에서 `Branches` 테이블이 존재하지 않으면 생성합니다.
-- `Program.cs`에서는 이 클래스를 인스턴스화하여 **애플리케이션이 시작될 때 모든 테넌트 데이터베이스에서 `Branches` 테이블을 생성**합니다.
-
-이 구조는 테넌트 기반 다중 데이터베이스 시스템에서 개별 데이터베이스에 필요한 스키마 변경을 자동화할 때 매우 유용합니다.
